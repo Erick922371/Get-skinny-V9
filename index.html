@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fit World Adventure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: white;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: linear-gradient(#87CEEB, #f0f0f0);
+      image-rendering: pixelated;
+      border: 3px solid white;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+    }
+    .touch-controls {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 1px solid white;
+      font-size: 20px;
+      padding: 10px;
+      width: 60px;
+      height: 60px;
+      text-align: center;
+      line-height: 40px;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="ui">❤️❤️❤️ Coins: <span id="coinCount">0</span></div>
+<canvas id="gameCanvas" width="640" height="360"></canvas>
+<div class="touch-controls">
+  <div>
+    <div class="btn" ontouchstart="keys['ArrowLeft']=true" ontouchend="keys['ArrowLeft']=false">←</div>
+    <div class="btn" ontouchstart="keys['ArrowRight']=true" ontouchend="keys['ArrowRight']=false">→</div>
+  </div>
+  <div class="btn" ontouchstart="keys[' ']=true" ontouchend="keys[' ']=false">⭡</div>
+</div>
+
+<audio id="jumpSfx" src="https://actions.google.com/sounds/v1/cartoon/slide_whistle_to_drum.ogg" preload="auto"></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const jumpSfx = document.getElementById('jumpSfx');
+const coinDisplay = document.getElementById('coinCount');
+
+let keys = {};
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+let player = { x: 50, y: 300, w: 20, h: 20, vx: 0, vy: 0, grounded: false, lives: 3, coins: 0 };
+let gravity = 0.8;
+let jumpForce = -12;
+
+let ground = { x: 0, y: 340, w: 640, h: 20 };
+let platforms = [{ x: 200, y: 270, w: 100, h: 10 }];
+let enemies = [{ x: 400, y: 320, w: 20, h: 20, dir: -1 }];
+let coins = [{ x: 210, y: 240, collected: false }, { x: 430, y: 240, collected: false }];
+
+let questions = [
+  { key: "age", q: "How old are you?" },
+  { key: "gender", q: "What is your gender? (M/F)" },
+  { key: "allergy", q: "Any allergies?" },
+  { key: "favorite", q: "Favorite food?" }
+];
+let questionStep = 0;
+let answers = {};
+
+function drawRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+function collide(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+function askQuestion() {
+  if (questionStep < questions.length) {
+    const a = prompt(questions[questionStep].q);
+    answers[questions[questionStep].key] = a;
+    questionStep++;
+  } else {
+    showMealPlan();
+  }
+}
+
+function showMealPlan() {
+  let plan = `Your Meal Plan (Age: ${answers.age}, Gender: ${answers.gender})\nAllergies: ${answers.allergy}\nFavorites: ${answers.favorite}\n\n`;
+  const meals = ['Oatmeal', 'Fruits', 'Rice & Chicken', 'Yogurt', 'Fish & Veggies'];
+  for (let day = 1; day <= 7; day++) {
+    plan += `Day ${day}:\n`;
+    for (let i = 0; i < 5; i++) {
+      plan += `- ${meals[Math.floor(Math.random()*meals.length)]}\n`;
+    }
+    plan += '\n';
+  }
+  alert(plan);
+}
+
+function update() {
+  // Move player
+  player.vx = 0;
+  if (keys["ArrowLeft"]) player.vx = -3;
+  if (keys["ArrowRight"]) player.vx = 3;
+  if (keys[" "] && player.grounded) {
+    player.vy = jumpForce;
+    player.grounded = false;
+    jumpSfx.currentTime = 0;
+    jumpSfx.play();
+  }
+
+  player.vy += gravity;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // Ground collision
+  if (player.y + player.h > ground.y) {
+    player.y = ground.y - player.h;
+    player.vy = 0;
+    player.grounded = true;
+  }
+
+  // Platform collision
+  platforms.forEach(p => {
+    if (collide(player, p) && player.vy >= 0) {
+      player.y = p.y - player.h;
+      player.vy = 0;
+      player.grounded = true;
+    }
+  });
+
+  // Coin collection
+  coins.forEach((coin, i) => {
+    if (!coin.collected && collide(player, { x: coin.x, y: coin.y, w: 10, h: 10 })) {
+      coin.collected = true;
+      player.coins++;
+      coinDisplay.innerText = player.coins;
+      askQuestion();
+    }
+  });
+
+  // Enemy logic
+  enemies.forEach(e => {
+    e.x += e.dir * 1;
+    if (e.x < 0 || e.x > canvas.width - e.w) e.dir *= -1;
+
+    if (collide(player, e)) {
+      player.lives--;
+      if (player.lives <= 0) {
+        alert("Game Over!");
+        location.reload();
+      }
+    }
+  });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawRect(ground.x, ground.y, ground.w, ground.h, "#654321");
+  platforms.forEach(p => drawRect(p.x, p.y, p.w, p.h, "#888"));
+  drawRect(player.x, player.y, player.w, player.h, "#FF0000");
+  enemies.forEach(e => drawRect(e.x, e.y, e.w, e.h, "#00FF00"));
+  coins.forEach(c => {
+    if (!c.collected) drawRect(c.x, c.y, 10, 10, "#FFD700");
+  });
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
